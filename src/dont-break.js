@@ -26,7 +26,6 @@ var stripComments = require('strip-json-comments')
 // write found dependencies into a hidden file
 const dontBreakFilename = './.dont-break.json'
 
-const NAME_COMMAND_SEPARATOR = ':'
 const DEFAULT_TEST_COMMAND = 'npm test'
 const INSTALL_TIMEOUT_SECONDS = 10
 
@@ -59,7 +58,7 @@ function saveTopDependents (name, metric, n) {
       return _.take(dependents, n)
     })
     .then(function saveToFile (topDependents) {
-      la(check.arrayOfStrings(topDependents), 'expected list of top strings', topDependents)
+      la(_.isArray(topDependents), 'expected list of top strings', topDependents)
       // TODO use template library instead of manual concat
       var str = '// top ' + n + ' most dependent modules by ' + metric + ' for ' + name + '\n'
       str += '// data from NPM registry on ' + (new Date()).toDateString() + '\n'
@@ -155,43 +154,40 @@ function testCurrentModuleInDependent (dependentFolder) {
     })
 }
 
-function getDependencyName (dependent) {
-  if (isRepoUrl(dependent)) {
-    debug('dependent is git repo url %s', dependent)
-    return dependent
+function getDependency (dependent) {
+  if (_.isString(dependent)) {
+    return {
+      name: dependent,
+      repoUrl: isRepoUrl(dependent) ? dependent : undefined,
+      command: DEFAULT_TEST_COMMAND
+    }
+  } else {
+    return {
+      name: dependent.name,
+      repoUrl: dependent.repoUrl,
+      command: dependent.command || DEFAULT_TEST_COMMAND
+    }
   }
-  const nameParts = dependent.split(NAME_COMMAND_SEPARATOR)
-  la(nameParts.length, 'expected at least module name', dependent)
-  const moduleName = nameParts[0].trim()
-  return moduleName
 }
 
 function testDependent (options, dependent) {
-  la(check.unemptyString(dependent), 'invalid dependent', dependent)
-  banner('  testing', quote(dependent))
-
-  const moduleName = getDependencyName(dependent)
+  la(check.unemptyString(dependent.name), 'invalid dependent', dependent.name)
+  banner('  testing', quote(dependent.name))
 
   function formFullFolderName () {
-    if (isRepoUrl(dependent)) {
+    if (dependent.repoUrl) {
       // simple repo installation
       return toFolder
     } else {
       // it was NPM install
-      return join(toFolder, 'lib', 'node_modules', moduleName)
+      return join(toFolder, 'lib', 'node_modules', dependent.name)
     }
   }
 
-  // TODO grab test command from dependent object
-  // var nameParts = dependent.split(NAME_COMMAND_SEPARATOR)
-  // la(nameParts.length, 'expected at least module name', dependent)
-  // var moduleName = nameParts[0].trim()
-  // var moduleTestCommand = nameParts[1] || DEFAULT_TEST_COMMAND
-  var moduleTestCommand = DEFAULT_TEST_COMMAND
-  var testModuleInFolder = _.partial(testInFolder, moduleTestCommand)
+  var testModuleInFolder = _.partial(testInFolder, dependent.command)
 
   const pkg = require(join(process.cwd(), 'package.json'))
-  const depName = pkg.name + '-v' + pkg.version + '-against-' + moduleName
+  const depName = pkg.name + '-v' + pkg.version + '-against-' + dependent.name
   const safeName = _.kebabCase(_.deburr(depName))
   debug('original name "%s", safe "%s"', depName, safeName)
   const toFolder = join(osTmpdir(), safeName)
@@ -201,11 +197,11 @@ function testDependent (options, dependent) {
   la(check.positiveNumber(timeoutSeconds), 'wrong timeout', timeoutSeconds, options)
 
   const installOptions = {
-    name: moduleName,
+    name: dependent.repoUrl || dependent.name,
     prefix: toFolder
   }
   return install(installOptions)
-    .timeout(timeoutSeconds * 1000, 'install timed out for ' + moduleName)
+    .timeout(timeoutSeconds * 1000, 'install timed out for ' + dependent.name)
     .then(formFullFolderName)
     .then(function checkInstalledFolder (folder) {
       la(check.unemptyString(folder), 'expected folder', folder)
@@ -217,7 +213,7 @@ function testDependent (options, dependent) {
       var moduleVersion = installedPackage.version
       var currentVersion = installedPackage.dependencies[pkg.name] ||
         installedPackage.devDependencies[pkg.name]
-      banner('installed', moduleName + '@' + moduleVersion,
+      banner('installed', dependent.name + '@' + moduleVersion,
         '\ninto', folder,
         '\ncurrently uses', pkg.name + '@' + currentVersion,
         '\nwill test', pkg.name + '@' + pkg.version)
@@ -253,12 +249,12 @@ function testDependents (options, dependents) {
   }, q(true))
 }
 
-function dontBreakDependents (options, dependents) {
-  la(check.arrayOfStrings(dependents), 'invalid dependents', dependents)
-  debug('dependents', dependents)
+function dontBreakDependents (options, userDependents) {
+  la(_.isArray(userDependents), 'invalid dependents', userDependents)
+  debug('dependents', userDependents)
 
-  dependents = _.invoke(dependents, 'trim')
-  banner('  testing the following dependents\n  ' + dependents)
+  var dependents = _.map(userDependents, getDependency)
+  banner('  testing the following dependents\n  ' + _.map(dependents, 'name').join(', '))
 
   const logSuccess = function logSuccess () {
     console.log('all dependents tested')
@@ -280,7 +276,7 @@ function dontBreak (options) {
   debug('working in folder %s', options.folder)
   var start = chdir.to(options.folder)
 
-  if (check.arrayOfStrings(options.dep)) {
+  if (_.isArray(options.dep)) {
     start = start.then(function () {
       return options.dep
     })

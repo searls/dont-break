@@ -112,18 +112,33 @@ save to `.dont-break.json` and check.
 
 The above commands overwrite `.dont-break.json` file.
 
-## Custom test command (in progress)
+## Custom test command
 
-You can specify a custom test command per dependent module. Separate the name of the module
-from the test command using `:` For example, to run `grunt test` for `foo-module-name`,
-but default command for module `bar-name`, list in `.dont-break.json` the following:
+You can specify a custom test command per dependent module, as well. Instead of
+specifying the string of the dependency to be installed, provide an object with
+the `name` and `command` you wish to execute. If the module to be tested should
+be cloned via git instead of installed from npm, specify that by setting the
+`repoUrl` property.
 
+For example, to run `npm run test:ci` for `foo-module-name` and hte default
+command for module `bar-name`, you could configure the following
+`.dont-break.json`:
+
+```json
+[
+  {
+    "name": "foo-module-name",
+    "repoUrl": "https://github.com/foo/foo.js",
+    "command": "npm run test:ci"
+  },
+  "bar-name"
+]
 ```
-foo-module-name: grunt test
-bar-name
-```
 
-You can also specify a longer installation time out, in seconds, using CLI option
+## Timeout
+
+You can also specify a longer installation time out, in seconds, using option
+`--timeout` from the command-line. The default is 10 seconds.
 
 ```
 dont-break --timeout 30
