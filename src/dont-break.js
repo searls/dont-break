@@ -27,7 +27,7 @@ var stripComments = require('strip-json-comments')
 var dontBreakFilename = './.dont-break.json'
 
 var DEFAULT_TEST_COMMAND = 'npm test'
-var INSTALL_TIMEOUT_SECONDS = 10
+var INSTALL_TIMEOUT_SECONDS = 3 * 60
 
 var install = require('./install-dependency')
 
@@ -170,6 +170,15 @@ function getDependency (dependent) {
   }
 }
 
+function getDependentVersion (pkg, name) {
+  if (check.object(pkg.dependencies) && pkg.dependencies[name]) {
+    return pkg.dependencies[name]
+  }
+  if (check.object(pkg.devDependencies) && pkg.devDependencies[name]) {
+    return pkg.devDependencies[name]
+  }
+}
+
 function testDependent (options, dependent) {
   la(check.unemptyString(dependent.name), 'invalid dependent', dependent.name)
   banner('  testing', quote(dependent.name))
@@ -211,8 +220,10 @@ function testDependent (options, dependent) {
     .then(function printMessage (folder) {
       var installedPackage = readJSON(join(folder, 'package.json'))
       var moduleVersion = installedPackage.version
-      var currentVersion = installedPackage.dependencies[pkg.name] ||
-        installedPackage.devDependencies[pkg.name]
+      var currentVersion = getDependentVersion(installedPackage, pkg.name)
+      la(check.unemptyString(currentVersion),
+        'could not find dependency on', pkg.name,
+        'in module', installedPackage.name)
       banner('installed', dependent.name + '@' + moduleVersion,
         '\ninto', folder,
         '\ncurrently uses', pkg.name + '@' + currentVersion,
